@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>SeaBattle!</title>
+
+<script src="https://code.createjs.com/createjs-2015.11.26.min.js"></script>
+<script src="seabattle.js"></script>
+<script src="js/Rnd.js"></script>
+<script src="js/Collision.js"></script>
+<script>
+var canvas, stage, w, h, stageRect;
+var score = 0, gameEnded, torpedoDelay, shipDelay;
+var ships, torpedos;
+var title, game, aim, scoreFld, shotsMC, speed, torpFld, reverse;
+
+
+function init() {
+    canvas = document.getElementById("gameCanvas");
+    images = images||{};
+	var loader = new createjs.LoadQueue(false);
+    loader.addEventListener("fileload", handleFileLoad);
+	loader.addEventListener("complete", setup);
+	loader.loadManifest(lib.properties.manifest);
+
+}
+function handleFileLoad(evt) {
+    if (evt.item.type == "image") { images[evt.item.id] = evt.result; }
+}
+
+function setup(evt) {
+    var queue = evt.target;
+    var ssMetadata = lib.ssMetadata;
+    for(var i=0; i<ssMetadata.length; i++) {
+        ss[ssMetadata[i].name] = new createjs.SpriteSheet( {"images": [queue.getResult(ssMetadata[i].name)], "frames": ssMetadata[i].frames} )
+    }
+    w = canvas.width;
+    h = canvas.height;
+    stageRect = new createjs.Rectangle(0,0,w,h);
+    stageRect.pad(40,40,40,40);
+	title = new lib.Title();
+	title.startBtn.on("click", function() { title.play() });
+    stage = new createjs.Stage(canvas);
+	scoreFld = new createjs.Text("", "bold 48pt Arial", "#A9A9A9");
+	scoreFld.textAlign = "right";
+	scoreFld.x = w-20;
+	scoreFld.y = 20;
+	torpFld = new createjs.Text("", "bold 48pt Arial", "#A9A9A9");
+	torpFld.textAlign = "left";
+	torpFld.x = 20;
+	torpFld.y = 20;
+	stage.addChild(title, scoreFld, torpFld);
+	stage.enableMouseOver();
+	
+	createjs.Ticker.framerate = 30;
+	createjs.Ticker.on("tick", tick);
+}
+
+function startGame() {
+	scoreFld.text = score = 0;
+	torpFld.text = shotsMC = 20;
+	gameEnded = false;
+	torpedoDelay = 0;
+	title.parent.removeChild(title);
+	
+	game = new createjs.Container();
+	stage.addChildAt(game, 0);
+	ships = [];
+	torpedos = [];
+	reverse = false;
+	shipDelay = 0;
+	speed = 1;
+	var bg = new lib.Background();
+	var fmount = new lib.Mount_1();
+	var smount = new lib.Mount_2();
+    fmount.y = 305;
+    fmount.x = 925;
+    smount.y = 305;
+    smount.x = 75;
+	aim = new lib.Aim();
+	stage.cursor = "none";
+	game.addChild(bg, fmount, smount, aim);
+
+	stage.addEventListener("stagemousedown", onStageClick);
+    stage.addEventListener("stagemousemove", mouseUpdate);
+}
+
+function endGame() {
+	game.parent.removeChild(game);
+	stage.addChildAt(title, 0);
+	game = null;
+	title.gotoAndPlay(0);
+}
+
+function onStageClick(evt) {
+	if (torpedoDelay > 0) { return; }
+	var dx = evt.stageX - 500, dy = evt.stageY - 560, a = Math.atan2(dy, dx);
+	var torpedo = new lib.Torpedo();
+	
+	torpedoDelay = 100;
+	torpedo.set({x:500, y:560, velX:Math.cos(a)*3, velY:Math.sin(a)*3, offset:Rnd(1), radius:5});
+	
+	game.addChild(torpedo);
+	torpedos.push(torpedo);
+	shotsMC--;
+	torpFld.text = shotsMC;
+}
+function mouseUpdate(evt) {
+    aim.x = evt.stageX; aim.y = evt.stageY;
+}
+function tick(evt) {
+	if (!game) { stage.update(); return; }
+    if(shotsMC == 0) loseGame();
+
+	var i, ship, torpedo;
+	torpedoDelay--;
+	
+	if (shipDelay == 0) {
+	    addShip();
+        ++shipDelay;
+	}
+	// ship loop:
+	//for (i=ships.length-1; i>=0; i--) {
+        ship = ships[0];
+    	if(!reverse) ship.x+=ship.velX;
+        else ship.x-=ship.velX;
+        if(ship.x >= 830) { reverse = true; ship.stop(); ship.gotoAndPlay("idle2");}
+        if(ship.x <= 170) { reverse = false; ship.gotoAndPlay("idle");}
+
+	//}
+
+	// torpedos loop:
+	for (i=torpedos.length-1; i>=0; i--) {
+		torpedo = torpedos[i];
+		torpedo.x += torpedo.velX;
+		torpedo.y += torpedo.velY;
+		if (Collision.test(torpedo, ships, true)) {
+		// hit
+            addScore(1);
+            torpedos.splice(i, 1);
+            ship.gotoAndPlay("explosion") ;
+            torpedo.gotoAndPlay("targeting");
+            --shipDelay;
+		}
+		else if(!stageRect.contains(torpedo.x, torpedo.y))
+		{
+            game.removeChild(torpedo);
+		}
+	}
+	stage.update(evt);
+}
+
+function addScore(pts) {
+	score += pts;
+	scoreFld.text = score;
+}
+
+function addShip() {
+	var creature = new lib.Ship();
+	creature.set({x:170, y:330, velX:speed+score, radius:15});
+	game.addChild(creature);
+	ships.push(creature);
+}
+
+function loseGame() {
+	if (gameEnded) { return; }
+	gameEnded = true;
+	stage.removeEventListener("stagemousedown", onStageClick);
+	stage.removeEventListener("stagemousemove", mouseUpdate);
+	var gameOver = new lib.GameOver();
+	gameOver.x = 525;
+	gameOver.y = 125;
+	game.addChild(gameOver);
+}
+</script>
+
+<!-- write your code here -->
+
+</head>
+<body onload="init();" style="background-color:#D4D4D4;">
+	<canvas id="gameCanvas" width="1000" height="600" style="margin:50px auto;display: block; background-color:rgba(255, 255, 255, 1.00);"></canvas>
+</body>
+</html>
